@@ -1,0 +1,286 @@
+<devicedata>
+    <copyright>Copyright 2014 Nathan Moinvaziri. All rights reserved.</copyright>
+    <creator>Nathan Moinvaziri</creator>
+    <manufacturer>Nathan Moinvaziri</manufacturer>
+    <name>SMTP Client</name>
+    <model>SMTP Client</model>
+    <created>02/04/2012 4:04 AM</created>
+    <modified>02/04/2012 4:04 AM</modified>
+    <version>2</version>
+    <small>devices_sm\amfm.gif</small>
+    <large>devices_lg\amfm.gif</large>
+    <control>lua_gen</control>
+    <controlmethod>serial</controlmethod>
+    <driver>DriverWorks</driver>
+    <combo>True</combo>
+    <OnlineCategory>others</OnlineCategory>
+    <proxies qty="1">
+        <proxy>
+        </proxy>
+    </proxies>
+    <connections>
+        <connection>
+            <id>5000</id>
+            <facing>6</facing>
+            <connectionname>SMTP_CLIENT</connectionname>
+            <type>2</type>
+            <consumer>False</consumer>
+            <audiosource>False</audiosource>
+            <videosource>False</videosource>
+            <linelevel>False</linelevel>
+            <classes>
+                <class>
+                    <classname>
+                    </classname>
+                </class>
+            </classes>
+        </connection>
+    </connections>
+    <config>
+        <power_management_method>AlwaysOn</power_management_method>
+        <power_command_delay>0</power_command_delay>
+        <power_delay>0</power_delay>
+        <power_command_needed>False</power_command_needed>
+        <serialsettings>
+        </serialsettings>
+        <documentation>You can use this driver to send e-mails through an SMTP server.</documentation>
+        <script><![CDATA[
+DebugPrint = true
+DebugLog = false
+
+RecvBuffer = ""
+NetworkAddressed = false
+
+SendState = {}
+SendSubject = {}
+SendBody = {}
+SendCurBindingId = 6001
+
+function OnPropertyChanged(strProperty)
+	local prop = Properties[strProperty]
+end
+
+function Debug(strDebugText)
+	if (DebugPrint) then print(strDebugText) end
+	if (DebugLog) then C4:ErrorLog(strDebugText) end
+end
+
+function ErrorOut(strErrorMsg)
+	print(strErrorMsg)
+	C4:ErrorLog(strErrorMsg)
+end
+
+function OnNetworkBindingChanged(idBinding, bIsBound)
+	NetworkAddressed = bIsBound
+	if (NetworkAddressed) then
+		C4:NetConnect(idBinding, Properties["Server Port"], "TCP")
+	end
+end
+
+function SendToNetworkInternalRaw(idBinding, Data)
+	Debug("Sent: " .. Data)
+	C4:SendToNetwork(idBinding, Properties["Server Port"], Data)
+end
+
+function SendToNetworkInternal(idBinding, Data)
+	SendToNetworkInternalRaw(idBinding, Data .. "\r\n")
+end
+
+function GetSimpleAddressToSend(Address)
+	if (string.find(Address, "<") ~= nil) then
+		Address = string.sub(Address, string.find(Address, "<"), string.find(Address, ">"))
+	end
+	return GetAddressToSend(Address)
+end
+
+function GetAddressToSend(Address)
+	if (string.find(Address, "<") == nil) then
+		Address = "<" .. Address .. ">"
+	end
+	return Address
+end
+
+function SendNext(idBinding)
+	if (SendState[idBinding] == 0) then
+		SendToNetworkInternal(idBinding, "MAIL FROM: " .. GetSimpleAddressToSend(Properties["From Address"]))
+	elseif (SendState[idBinding] == 1) then
+		SendToNetworkInternal(idBinding, "RCPT TO: " .. GetSimpleAddressToSend(Properties["To Address"]))
+	elseif (SendState[idBinding] == 2) then
+		SendToNetworkInternal(idBinding, "DATA")
+	elseif (SendState[idBinding] == 3) then
+		SendToNetworkInternal(idBinding, "From: " .. GetAddressToSend(Properties["From Address"]))
+		SendToNetworkInternal(idBinding, "To: " .. GetAddressToSend(Properties["To Address"]))
+		SendToNetworkInternal(idBinding, "Subject: " .. SendSubject[idBinding])
+		SendToNetworkInternal(idBinding, "Date: " .. os.date("!%a, %d %b %Y %H:%M:%S ") .. "-0000")
+		SendToNetworkInternal(idBinding, "MIME-Version: 1.0")
+		SendToNetworkInternal(idBinding, "Content-Type: text/plain; charset=\"iso-8859-1\"")
+		SendToNetworkInternal(idBinding, "Content-Transfer-Encoding: 8bit")
+		SendToNetworkInternal(idBinding, "")
+		SendToNetworkInternal(idBinding, SendBody[idBinding])
+		SendToNetworkInternal(idBinding, ".")
+	end
+	SendState[idBinding] = SendState[idBinding] + 1
+end
+
+function ReceivedFromNetwork(idBinding, nPort, strData)
+	for Line in string.gmatch(strData, "[^\r\n]+") do
+		Command, Line = string.match(Line, "(%d+).(.+)")
+		Command = tonumber(Command)
+		LineUp = string.upper(Line)
+		Debug("Command: " .. Command .. " Line: " .. Line)
+		if (Command == 220) then
+			Host, _ = string.match(Line, "(.+)%s(.+)")
+			Debug("Host: " .. Host)
+			SendToNetworkInternal(idBinding, "EHLO Control4" )
+		elseif (Command == 250) then
+			if (string.find(LineUp, "AUTH") ~= nil) then
+				if (string.find(LineUp, "LOGIN") ~= nil) then
+					SendToNetworkInternal(idBinding, "AUTH LOGIN")
+				end
+			elseif (string.find(LineUp, "OK") ~= nil) then
+				SendNext(idBinding)
+			elseif (string.find(LineUp, "ACCEPTED MESSAGE") ~= nil) then
+				SendToNetworkInternal(idBinding, "QUIT")
+			elseif (string.find(LineUp, "ACCEPTED") ~= nil) then
+				-- Negotation of To/From Address Completed
+				SendNext(idBinding)
+			end
+		elseif (Command == 334) then
+			Value = C4:Base64Decode(Line)
+			if (string.find(Value, "Username:") ~= nil) then
+				SendToNetworkInternal(idBinding, C4:Base64Encode(Properties["Username"]))
+			elseif (string.find(Value, "Password:") ~= nil) then
+				SendToNetworkInternal(idBinding, C4:Base64Encode(Properties["Password"]))
+			end
+		elseif (Command == 354) then -- Send Body
+			SendNext(idBinding)
+		elseif (Command == 535) then -- Authentication Failed
+			ErrorOut(Line)
+		elseif (Command == 235) then -- Authentication Successful
+			SendNext(idBinding)
+		elseif (Command == 221) then -- Closing Connection
+			C4:RemoveDynamicBinding(idBinding)
+		end
+    end
+end
+
+function OnConnectionStatusChanged(idBinding, nPort, strStatus)
+	if (strStatus == "ONLINE") then
+		-- Connect was successful.
+		RecvBuffer = ""
+		Debug("Connected to server.")
+	else
+		C4:RemoveDynamicBinding(idBinding)
+
+		SendState[idBinding] = nil
+		SendSubject[idBinding] = nil
+		SendBody[idBinding] = nil
+
+		Debug("Disconnected from server")
+	end
+end
+
+
+function SendEmail(subject, body)
+
+	Debug("Sending email.. ")
+
+	for PropertyName, PropertyValue in pairs(Properties) do
+		print(PropertyName, PropertyValue)
+	end
+
+	SendCurBindingId = SendCurBindingId + 1
+	idBinding = SendCurBindingId
+
+	SendSubject[idBinding] = subject
+	SendBody[idBinding] = body
+	SendState[idBinding] = 0
+
+	C4:AddDynamicBinding(idBinding, "CONTROL", false, "SMTP Connection", "TCP", false, false)
+	C4:CreateNetworkConnection(idBinding, Properties["Server Address"], Properties["Server Port"])
+
+end
+
+function ExecuteCommand(strCommand, tParams)
+	Debug("ExecuteCommand called with : " .. strCommand)
+	if (strCommand == "Send") then
+		if tParams ~= nil then
+			SendEmail(tParams["Subject"], tParams["Body"])
+		end
+	end
+end
+
+function OnDriverDestroyed()
+	Debug("OnDriverDestroyed called")
+	for i, idBinding in ipairs(SendState) do
+		C4:RemoveDynamicBinding(idBinding)
+	end
+end
+
+for k,v in pairs(Properties) do
+	OnPropertyChanged(k)
+end
+
+      ]]></script>
+        <commands>
+            <command>
+                <name>Send</name>
+                <description>Send an e-mail</description>
+                <params>
+                    <param>
+                        <name>Subject</name>
+                        <type>STRING</type>
+                        <readonly>False</readonly>
+                        <default />
+                    </param>
+                    <param>
+                        <name>Body</name>
+                        <type>STRING</type>
+                        <readonly>False</readonly>
+                        <default />
+                    </param>
+                </params>
+            </command>
+        </commands>
+        <properties>
+            <property>
+                <name>Server Address</name>
+                <type>STRING</type>
+                <readonly>false</readonly>
+                <default>smtp.cox.net</default>
+            </property>
+            <property>
+                <name>Server Port</name>
+                <type>RANGED_INTEGER</type>
+                <readonly>false</readonly>
+                <default>2525</default>
+                <minimum>1</minimum>
+                <maximum>65535</maximum>
+            </property>
+            <property>
+                <name>Username</name>
+                <type>STRING</type>
+                <readonly>false</readonly>
+                <default />
+            </property>
+            <property>
+                <name>Password</name>
+                <type>STRING</type>
+                <readonly>false</readonly>
+                <default />
+            </property>
+            <property>
+                <name>From Address</name>
+                <type>STRING</type>
+                <readonly>false</readonly>
+                <default>test@test.com</default>
+            </property>
+            <property>
+                <name>To Address</name>
+                <type>STRING</type>
+                <readonly>false</readonly>
+                <default>user@domain.com</default>
+            </property>
+        </properties>
+    </config>
+</devicedata>
