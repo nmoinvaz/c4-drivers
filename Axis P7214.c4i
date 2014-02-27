@@ -1,0 +1,1165 @@
+<devicedata>
+    <copyright>Copyright 2013 Control4 Corporation.  All rights reserved.</copyright>
+    <creator>Control4</creator>
+    <manufacturer>Axis</manufacturer>
+    <name>Axis P7214</name>
+    <model>P7214</model>
+    <created>07/18/2013 12:00 AM</created>
+    <modified>10/10/2013 12:00 AM</modified>
+    <version>1</version>
+    <small>devices_sm\camera_sm.gif</small>
+    <large>devices_lg\camera_lg.gif</large>
+    <control>lua_gen</control>
+    <controlmethod>ip</controlmethod>
+    <driver>DriverWorks</driver>
+    <proxies qty="1">
+        <proxy proxybindingid="5001">camera</proxy>
+    </proxies>
+    <capabilities>
+        <modes>SNAPSHOT, MJPEG, H264, H264I</modes>
+        <has_pan>False</has_pan>
+        <has_pan_scan>False</has_pan_scan>
+        <has_tilt>False</has_tilt>
+        <has_tilt_scan>False</has_tilt_scan>
+        <has_home>False</has_home>
+        <has_zoom>False</has_zoom>
+        <has_night_mode>False</has_night_mode>
+        <number_presets>0</number_presets>
+        <default_http_port>80</default_http_port>
+        <default_rtsp_port>554</default_rtsp_port>
+        <default_authentication_required>False</default_authentication_required>
+        <default_authentication_type>BASIC</default_authentication_type>
+        <default_username>username</default_username>
+        <default_password>password</default_password>
+        <address_readonly>False</address_readonly>
+        <http_port_readonly>False</http_port_readonly>
+        <show_test_url>True</show_test_url>
+    </capabilities>
+    <connections>
+        <connection>
+            <id>5001</id>
+            <facing>6</facing>
+            <connectionname>Camera</connectionname>
+            <type>2</type>
+            <consumer>False</consumer>
+            <audiosource>False</audiosource>
+            <videosource>False</videosource>
+            <linelevel>False</linelevel>
+            <hidden>True</hidden>
+            <classes>
+                <class>
+                    <classname>CAMERA</classname>
+                </class>
+            </classes>
+        </connection>
+        <connection>
+            <id>6001</id>
+            <facing>6</facing>
+            <connectionname>Camera Connection</connectionname>
+            <type>4</type>
+            <consumer>True</consumer>
+            <audiosource>False</audiosource>
+            <videosource>False</videosource>
+            <linelevel>True</linelevel>
+            <classes>
+                <class>
+                    <classname>TCP</classname>
+                    <ports>
+                        <port>
+                            <number>80</number>
+                        </port>
+                    </ports>
+                </class>
+            </classes>
+        </connection>
+    </connections>
+    <config>
+        <power_management_method>AlwaysOn</power_management_method>
+        <power_command_delay>0</power_command_delay>
+        <power_delay>0</power_delay>
+        <power_command_needed>False</power_command_needed>
+        <documentation>
+        </documentation>
+        <script><![CDATA[
+--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+-- Driver Declarations
+--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+--[[
+	Command Handler Tables
+--]]
+EX_CMD = {}
+PRX_CMD = {}
+NOTIFY = {}
+DEV_MSG = {}
+LUA_ACTION = {}
+
+--[[
+Tables of functions
+The following tables are function containers that are called within the following functions:	
+
+	OnDriverInit()
+		- first calls all functions contained within ON_DRIVER_EARLY_INIT table
+		- then calls all functions contained within ON_DRIVER_INIT table
+	OnDriverLateInit()
+		- calls all functions contained within ON_DRIVER_LATEINIT table
+	OnDriverUpdate()
+		- calls all functions contained within ON_DRIVER_UPDATE table
+	OnDriverDestroyed()
+		- calls all functions contained within ON_DRIVER_DESTROYED table
+	OnPropertyChanged()
+		- calls all functions contained within ON_PROPERTY_CHANGED table
+--]]
+ON_DRIVER_INIT = {}
+ON_DRIVER_EARLY_INIT = {}
+ON_DRIVER_LATEINIT = {}
+ON_DRIVER_UPDATE = {}
+ON_DRIVER_DESTROYED = {}
+ON_PROPERTY_CHANGED = {}
+
+-- Constants
+DEFAULT_PROXY_BINDINGID = 5001
+			
+--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+-- Camera Proxy Code - This section contains the methods that must be
+--   modified/implemented to create a driver for a specific camera.
+--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+-- Constants
+DEFAULT_CONNECTION_BINDINGID = 6001
+
+-- Global Variables
+gVersion = "0.9.4" -- variable to track major, minor, revision.
+
+-- Global Variables - Initialized, updated, and persisted by Camera proxy
+gAddress = "localhost"
+gHttpPort = 80
+gRtspPort = 554
+gAuthRequired = false
+gAuthType = "BASIC" -- "BASIC" or "DIGEST"
+gUsername = "username"
+gPassword = "password"
+gPubliclyAccessible = false
+
+-- Global Variables - Initialized, updated, and persisted by lua driver
+cameraID = 1
+
+--Global Tables
+UI_REQ = {}
+
+
+--[[
+	This will be called by the base template code from its OnDriverInit function.
+]]--
+function ON_DRIVER_INIT.Camera()
+	C4:UpdateProperty("Version", gVersion)
+	
+end
+
+--[[
+	This will be called by the base template code from its OnDriverLateInit function.
+]]--
+function ON_DRIVER_LATEINIT.Camera()
+	local property_defaults = {}
+	property_defaults.HTTP_PORT = C4:GetCapability("default_http_port") or 80
+	property_defaults.RTSP_PORT = C4:GetCapability("default_rtsp_port") or 554
+	property_defaults.AUTHENTICATION_REQUIRED = C4:GetCapability("default_authentication_required") or true
+	property_defaults.AUTHENTICATION_TYPE = C4:GetCapability("default_authentication_type") or "BASIC"
+	property_defaults.USERNAME = C4:GetCapability("default_username") or "username"
+	property_defaults.PASSWORD = C4:GetCapability("default_password") or "password"
+	
+	C4:SendToProxy(DEFAULT_PROXY_BINDINGID, "PROPERTY_DEFAULTS", property_defaults, "NOTIFY")
+end
+
+----------------------------------------------------------------------------
+-- Define property handlers for properties added by this protocol driver
+-- Camera ID -> CameraID
+----------------------------------------------------------------------------
+
+function ON_PROPERTY_CHANGED.CameraID(propertyValue)
+	Dbg:Trace("ON_PROPERTY.CameraID: " .. propertyValue)
+	
+	cameraID = tonumber(propertyValue)
+end
+
+--[[
+	This function is called when a UI (Navigator) requests data, and
+	calls the function requested.
+--]]
+function UIRequest(sRequest, tParams)
+	local ret = ""
+	
+	if (sRequest ~= nil) then
+		tParams = tParams or {}   -- initial table variable if nil
+		Dbg:Trace("UIRequest(): " .. sRequest .. "; Call Function UI_REQ." .. sRequest .. "()")
+		Dbg:Info(tParams)
+
+		if (UI_REQ[sRequest]) ~= nil then
+			ret = UI_REQ[sRequest](tParams)
+		else
+			Dbg:Alert("UIRequest: Unhandled request = " .. sRequest)
+		end
+	end
+
+	return ret
+end
+
+--[[
+	Return the query string required for an HTTP snapshot URL request.
+--]]
+function UI_REQ.GET_SNAPSHOT_QUERY_STRING(tParams)
+	tParams = tParams or {}
+    local size_x = tonumber(tParams["SIZE_X"]) or 640
+    local size_y = tonumber(tParams["SIZE_Y"]) or 480
+    Dbg:Trace("UI_REQ.GET_SNAPSHOT_QUERY_STRING (SIZE_X: " .. size_x .. " SIZE_Y: " .. size_y .. ")")
+	
+	snapshot_query_string = "axis-cgi/jpg/image.cgi?resolution=" .. get_image_size(size_x, size_y) .. "&camera=" .. cameraID
+	
+	return "<snapshot_query_string>" .. C4:XmlEscapeString(snapshot_query_string) .. "</snapshot_query_string>"
+end
+
+--[[
+	Return the query string required for an HTTP image push URL request.
+--]]
+function UI_REQ.GET_MJPEG_QUERY_STRING(tParams)
+	tParams = tParams or {}
+    local size_x = tonumber(tParams["SIZE_X"]) or 640
+    local size_y = tonumber(tParams["SIZE_Y"]) or 480
+	local delay = tonumber(tParams["DELAY"]) or 200
+    Dbg:Trace("UI_REQ.GET_MJPEG_QUERY_STRING (SIZE_X: " .. size_x .. " SIZE_Y: " .. size_y .. " DELAY: " .. delay .. ")")
+	
+	mjpeg_query_string = "axis-cgi/mjpg/video.cgi?resolution=" .. get_image_size(size_x, size_y) .. "&camera=" .. cameraID
+	
+	return "<mjpeg_query_string>" .. C4:XmlEscapeString(mjpeg_query_string) .. "</mjpeg_query_string>"
+end
+
+--[[
+	Return the query string required to establish Rtsp connection. May be empty string.
+--]]
+function UI_REQ.GET_RTSP_H264_QUERY_STRING(tParams)
+	tParams = tParams or {}
+    local size_x = tonumber(tParams["SIZE_X"]) or 640
+    local size_y = tonumber(tParams["SIZE_Y"]) or 480
+	local delay = tonumber(tParams["DELAY"]) or 50
+    Dbg:Trace("UI_REQ.GET_RTSP_H264_QUERY_STRING (SIZE_X: " .. size_x .. " SIZE_Y: " .. size_y .. " DELAY: " .. delay .. ")")
+	
+	rtsp_query_string = "axis-media/media.amp?resolution=" .. get_image_size(size_x, size_y) .. "&camera=" .. cameraID
+	
+	return "<rtsp_h264_query_string>" .. C4:XmlEscapeString(rtsp_query_string) .. "</rtsp_h264_query_string>"
+end
+
+--[[
+	Implement the following commands as required by capabilities. 
+	The function 'url_get_request(url)' can be used to perform HTTP Get.
+	example: 
+		local url = build_http_url("sample/queryString?parameter=value&parameter2=value2")
+		local ticket = url_get_request(url)
+--]]
+
+function PRX_CMD.PAN_LEFT(idBinding, tParams)
+	Dbg:Trace("PRX_CMD.PAN_LEFT")
+	
+	-- TODO: implement
+end
+
+function PRX_CMD.PAN_RIGHT(idBinding, tParams)
+	Dbg:Trace("PRX_CMD.PAN_RIGHT")
+	
+	-- TODO: implement
+end
+
+function PRX_CMD.PAN_SCAN(idBinding, tParams)
+	Dbg:Trace("PRX_CMD.PAN_SCAN")
+	
+	-- TODO: implement
+end
+
+function PRX_CMD.TILT_UP(idBinding, tParams)
+	Dbg:Trace("PRX_CMD.TILT_UP")
+	
+	-- TODO: implement
+end
+
+function PRX_CMD.TILT_DOWN(idBinding, tParams)
+	Dbg:Trace("PRX_CMD.TILT_DOWN")
+	
+	-- TODO: implement
+end
+
+function PRX_CMD.TILT_SCAN(idBinding, tParams)
+	Dbg:Trace("PRX_CMD.TILT_SCAN")
+	
+	-- TODO: implement
+end
+
+function PRX_CMD.ZOOM_IN(idBinding, tParams)
+	Dbg:Trace("PRX_CMD.ZOOM_IN")
+	
+	-- TODO: implement
+end
+
+function PRX_CMD.ZOOM_OUT(idBinding, tParams)
+	Dbg:Trace("PRX_CMD.ZOOM_OUT")
+	
+	-- TODO: implement
+end
+
+function PRX_CMD.HOME(idBinding, tParams)
+	Dbg:Trace("PRX_CMD.HOME")
+	
+	-- TODO: implement
+end
+
+function PRX_CMD.MOVE_TO(idBinding, tParams)
+	tParams = tParams or {}
+    local width = tonumber(tParams["WIDTH"]) or 0
+    local height = tonumber(tParams["HEIGHT"]) or 0
+	local x_index = tonumber(tParams["X_INDEX"]) or 0
+	local y_index = tonumber(tParams["Y_INDEX"]) or 0
+    Dbg:Trace("PRX_CMD.MOVE_TO (WIDTH: " .. width .. " HEIGHT: " .. height .. " X_INDEX: " .. x_index .." Y_INDEX: " .. y_index .. ")")
+	
+	-- TODO: implement
+end
+
+function PRX_CMD.PRESET(idBinding, tParams)
+	tParams = tParams or {}
+	local index = tonumber(tParams["INDEX"]) or 1
+    Dbg:Trace("PRX_CMD.PRESET (INDEX: " .. index .. ")")
+	
+	-- TODO: implement
+end
+
+--[[
+	The "SET" commands are called by proxy to initialize and update the 
+	global variables used by the protocol driver. No code change to the
+	"SET" commands is required.
+--]]
+
+function PRX_CMD.SET_ADDRESS(idBinding, tParams)
+	tParams = tParams or {}
+	gAddress = tParams["ADDRESS"] or gAddress
+    Dbg:Trace("PRX_CMD.SET_ADDRESS (ADDRESS: " .. gAddress .. ")")
+end
+
+function PRX_CMD.SET_HTTP_PORT(idBinding, tParams)
+	tParams = tParams or {}
+	gHttpPort = tonumber(tParams["PORT"]) or gHttpPort
+    Dbg:Trace("PRX_CMD.SET_HTTP_PORT (PORT: " .. gHttpPort .. ")")
+end
+
+function PRX_CMD.SET_RTSP_PORT(idBinding, tParams)
+	tParams = tParams or {}
+	gRtspPort = tonumber(tParams["PORT"]) or gRtspPort
+    Dbg:Trace("PRX_CMD.SET_RTSP_PORT (PORT: " .. gRtspPort .. ")")
+end
+
+function PRX_CMD.SET_AUTHENTICATION_REQUIRED(idBinding, tParams)
+	tParams = tParams or {}
+	gAuthRequired = to_boolean(tParams["REQUIRED"])
+    Dbg:Trace("PRX_CMD.SET_AUTHENTICATION_REQUIRED (REQUIRED: " .. gAuthRequired .. ")")
+end
+
+function PRX_CMD.SET_AUTHENTICATION_TYPE(idBinding, tParams)
+	tParams = tParams or {}
+	gAuthType = tParams["TYPE"] or gAuthType
+    Dbg:Trace("PRX_CMD.SET_AUTHENTICATION_TYPE (TYPE: " .. gAuthType .. ")")
+end
+
+function PRX_CMD.SET_USERNAME(idBinding, tParams)
+	tParams = tParams or {}
+	gUsername = tParams["USERNAME"] or gUsername
+    Dbg:Trace("PRX_CMD.SET_USERNAME (USERNAME: " .. gUsername .. ")")
+end
+
+function PRX_CMD.SET_PASSWORD(idBinding, tParams)
+	tParams = tParams or {}
+	gPassword = tParams["PASSWORD"] or gPassword
+    Dbg:Trace("PRX_CMD.SET_PASSWORD (PASSWORD: " .. gPassword .. ")")
+end
+
+function PRX_CMD.SET_PUBLICLY_ACCESSIBLE(idBinding, tParams)
+	tParams = tParams or {}
+	gPubliclyAccessible = to_boolean(tParams["PUBLICLY_ACCESSIBLE"])
+    Dbg:Trace("PRX_CMD.SET_PUBLICLY_ACCESSIBLE (PUBLICLY_ACCESSIBLE: " .. gPubliclyAccessible .. ")")
+end
+
+--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+-- Callback functions
+--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+--[[
+	The ReceivedAsync function is called in response to 'url_get_request'. 
+	The ticketId is the number returned from the request.
+--]]
+function ReceivedAsync(ticketId, strData, responseCode, tHeaders)
+	strData = strData or ""
+	responseCode = responseCode or 0
+	tHeaders = tHeaders or {}
+
+	Dbg:Trace("ReceivedAsync[" .. ticketId .. "]: Response Code: " .. responseCode .. " Length: " .. string.len(strData))
+	PrintTable(tHeaders, "    ")
+	local data_length = string.len(strData)
+	if (data_length > 128) then data_length = 128 end
+	Dbg:Trace("ReceivedAsync[" .. ticketId .. "]: Data: " .. string.sub(strData, 1, data_length))
+end
+
+--[[
+	The OnNetworkBindingChanged function is called when camera is identified or auto
+	identified using SDDP.
+--]]
+function OnNetworkBindingChanged(idBinding, bIsBound)
+	if ( idBinding == DEFAULT_CONNECTION_BINDINGID and bIsBound ) then
+	
+		local bindingAddress = C4:GetBindingAddress(DEFAULT_CONNECTION_BINDINGID)
+		Dbg:Trace("Network binding: " .. idBinding .. " Bound: " .. bindingAddress)
+		
+		if (address ~= bindingAddress) then
+			address = bindingAddress
+			C4:SendToProxy(DEFAULT_PROXY_BINDINGID, "ADDRESS_CHANGED", {ADDRESS = bindingAddress})
+		end
+	end	
+end
+
+--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+-- Helper functions
+--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+function get_image_size(size_x, size_y)
+	if (size_x == 640 and size_y == 480) then
+		return "4cif&squarepixel=1"
+	elseif (size_x == 320 and size_y == 240) then
+		return "cif&squarepixel=1"
+    elseif (size_x == 160 and size_y == 120) then
+        return "qcif&squarepixel=1"
+    end
+	return tostring(size_x) .. "X" .. tostring(size_y)
+end
+
+--[[
+	Convert the given value to a boolean.
+--]]
+function to_boolean(val)
+	rval = false;
+	
+	if type(val) == "string" and (string.lower(val) == "true" or val == "1") then
+		rval = true
+	elseif type(val) == "number" and val ~= 0 then
+		rval =  true
+	elseif type(val) == "boolean" and val == true then
+		rval = true
+	end
+	
+	return rval
+end
+
+--[[
+	Create the Authorization header for http request.
+--]]
+function auth_header()
+
+	local http_headers = {}
+
+	if gAuthRequired then
+		if gAuthType == "BASIC" then
+			local http_header_field = gUsername .. ":" .. gPassword
+			http_header_field = "Basic " .. C4:Base64Encode(http_header_field)
+			Dbg:Trace("HTTP Authentication: " .. http_header_field)
+			
+			http_headers["Authorization"] = http_header_field
+		end
+	end
+
+	return http_headers
+end
+
+--[[
+	Perform URL 'Get" request using authentication if required.
+	Returns ticket (number) that identifies response with 'ReceivedAsync' callback function.
+--]]
+function url_get_request(url)
+	local l_url = url
+	
+	if gAuthRequired and gAuthType == "DIGEST" then
+		l_url = string.sub(url, 1, 7) .. gUsername .. ":" .. gPassword .. "@" .. string.sub(url, 8)
+	end
+	
+	return C4:urlGet(l_url, auth_header())
+end
+
+--[[
+	Perform URL 'Post" request using authentication if required.
+	Returns ticket (number) that identifies response with 'ReceivedAsync' callback function.
+--]]
+function url_post_request(url, data)
+	local l_url = url
+	
+	if gAuthRequired and gAuthType == "DIGEST" then
+		l_url = string.sub(url, 1, 7) .. gUsername .. ":" .. gPassword .. "@" .. string.sub(url, 8)
+	end
+	
+	return C4:urlPost(l_url, data, auth_header())
+end
+
+--[[
+	Build HTTP request URL using global address and HTTP port variables and provided query string.
+--]]
+function build_http_url(query_string)
+	return "http://" .. gAddress .. ":" .. gHttpPort .. "/" .. query_string
+end
+		
+--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+-- Common Driver Code
+--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+--[[
+	OnPropertyChanged
+		Function called by Director when a property changes value.
+	Parameters
+		sProperty
+			Name of property that has changed.
+	Remarks
+		The value of the property that has changed can be found with: Properties[sName]. Note
+		that OnPropertyChanged is not called when the Property has been changed by the driver
+		calling the UpdateProperty command, only when the Property is changed by the user from
+		the Properties Page. This function is called by Director when a property changes value.
+--]]
+function OnPropertyChanged(sProperty)
+	Dbg:Trace("OnPropertyChanged(" .. sProperty .. ") changed to: " .. Properties[sProperty])
+
+	local propertyValue = Properties[sProperty]
+	
+	-- Remove any spaces (trim the property)
+	local trimmedProperty = string.gsub(sProperty, " ", "")
+
+	-- if function exists then execute (non-stripped)
+	if (ON_PROPERTY_CHANGED[sProperty] ~= nil and type(ON_PROPERTY_CHANGED[sProperty]) == "function") then
+		ON_PROPERTY_CHANGED[sProperty](propertyValue)
+		return
+	-- elseif trimmed function exists then execute
+	elseif (ON_PROPERTY_CHANGED[trimmedProperty] ~= nil and type(ON_PROPERTY_CHANGED[trimmedProperty]) == "function") then
+		ON_PROPERTY_CHANGED[trimmedProperty](propertyValue)
+		return
+	end
+end
+
+function ON_PROPERTY_CHANGED.DebugMode(propertyValue)
+	gDebugTimer:KillTimer()
+	Dbg:OutputPrint(propertyValue:find("Print") ~= nil)
+	Dbg:OutputC4Log(propertyValue:find("Log") ~= nil)
+	if (propertyValue == "Off") then return end
+	gDebugTimer:StartTimer()
+end
+
+function ON_PROPERTY_CHANGED.DebugLevel(propertyValue)
+	Dbg:SetLogLevel(tonumber(string.sub(propertyValue, 1, 1)))
+end
+
+---------------------------------------------------------------------
+-- ExecuteCommand Code
+---------------------------------------------------------------------
+--[[
+	ExecuteCommand
+		Function called by Director when a command is received for this DriverWorks driver.
+		This includes commands created in Composer programming.
+	Parameters
+		sCommand
+			Command to be sent
+		tParams
+			Lua table of parameters for the sent command
+--]]
+function ExecuteCommand(sCommand, tParams)
+	Dbg:Trace("ExecuteCommand(" .. sCommand .. ")")
+	Dbg:Info(tParams)
+
+	-- Remove any spaces (trim the command)
+	local trimmedCommand = string.gsub(sCommand, " ", "")
+
+	-- if function exists then execute (non-stripped)
+	if (EX_CMD[sCommand] ~= nil and type(EX_CMD[sCommand]) == "function") then
+		EX_CMD[sCommand](tParams)
+	-- elseif trimmed function exists then execute
+	elseif (EX_CMD[trimmedCommand] ~= nil and type(EX_CMD[trimmedCommand]) == "function") then
+		EX_CMD[trimmedCommand](tParams)
+	-- handle the command
+	elseif (EX_CMD[sCommand] ~= nil) then
+		QueueCommand(EX_CMD[sCommand])
+	else
+		Dbg:Alert("ExecuteCommand: Unhandled command = " .. sCommand)
+	end
+end
+
+--[[
+	Define any functions of commands (EX_CMD.<command>) received from ExecuteCommand that need to be handled by the driver.
+--]]
+
+--[[
+	EX_CMD.LUA_ACTION
+		Function called for any actions executed by the user from the Actions Tab in Composer.
+--]]
+function EX_CMD.LUA_ACTION(tParams)
+	if tParams ~= nil then
+		for cmd,cmdv in pairs(tParams) do
+			if cmd == "ACTION" then
+				if (LUA_ACTION[cmdv] ~= nil) then
+					LUA_ACTION[cmdv]()
+				else
+					Dbg:Alert("Undefined Action")
+					Dbg:Alert("Key: " .. cmd .. " Value: " .. cmdv)
+				end
+			else
+				Dbg:Alert("Undefined Command")
+				Dbg:Alert("Key: " .. cmd .. " Value: " .. cmdv)
+			end
+		end
+	end
+end
+
+--[[
+	LUA_ACTION.DisplayGlobals
+		Implementation of Action "Display Globals". Executed when selecting the "Display Globals" action within Composer.
+		Provided as an example for actions.
+--]]
+function LUA_ACTION.DisplayGlobals()
+	print ("Global Variables")
+	print ("----------------------------")
+
+	for k,v in pairs(_G) do	-- globals`
+		if not (type(v) == "function") then
+			--print(k .. ":  " .. tostring(v))
+			if (string.find(k, "^g%L")  == 1) then
+				print(k .. ":  " .. tostring(v))
+				if (type(v) == "table") then
+					PrintTable(v, "   ")
+				end
+			end
+		end
+	end
+
+	print ("")
+end
+
+function PrintTable(tValue, sIndent)
+	sIndent = sIndent or "   "
+	for k,v in pairs(tValue) do
+		print(sIndent .. tostring(k) .. ":  " .. tostring(v))
+		if (type(v) == "table") then
+			PrintTable(v, sIndent .. "   ")
+		end
+	end
+end
+
+---------------------------------------------------------------------
+-- ReceivedFromProxy Code
+---------------------------------------------------------------------
+--[[
+	ReceivedFromProxy(idBinding, sCommand, tParams)
+		Function called by Director when a proxy bound to the specified binding sends a
+		BindMessage to the DriverWorks driver.
+
+	Parameters
+		idBinding
+			Binding ID of the proxy that sent a BindMessage to the DriverWorks driver.
+		sCommand
+			Command that was sent
+		tParams
+			Lua table of received command parameters
+--]]
+function ReceivedFromProxy(idBinding, sCommand, tParams)
+	if (sCommand ~= nil) then
+		if(tParams == nil)		-- initial table variable if nil
+			then tParams = {}
+		end
+		Dbg:Trace("ReceivedFromProxy(): " .. sCommand .. " on binding " .. idBinding .. "; Call Function " .. sCommand .. "()")
+		Dbg:Info(tParams)
+
+		if (PRX_CMD[sCommand]) ~= nil then
+			PRX_CMD[sCommand](idBinding, tParams)
+		else
+			Dbg:Alert("ReceivedFromProxy: Unhandled command = " .. sCommand)
+		end
+	end
+end
+
+---------------------------------------------------------------------
+-- Notification Code
+---------------------------------------------------------------------
+-- A notify with no parameters
+function SendSimpleNotify(notifyText, ...)
+	bindingID = select(1, ...) or DEFAULT_PROXY_BINDINGID
+	C4:SendToProxy(bindingID, notifyText, {}, "NOTIFY")
+end
+
+---------------------------------------------------------------------
+-- Initialization/Destructor Code
+---------------------------------------------------------------------
+--[[
+	OnDriverInit
+		Invoked by director when a driver is loaded. This API is provided for the driver developer to contain all of the driver
+		objects that will require initialization.
+--]]
+function OnDriverInit()
+	C4:ErrorLog("INIT_CODE: OnDriverInit()")
+	-- Call all ON_DRIVER_EARLY_INIT functions.
+	for k,v in pairs(ON_DRIVER_EARLY_INIT) do
+		if (ON_DRIVER_EARLY_INIT[k] ~= nil and type(ON_DRIVER_EARLY_INIT[k]) == "function") then
+			C4:ErrorLog("INIT_CODE: ON_DRIVER_EARLY_INIT." .. k .. "()")
+			ON_DRIVER_EARLY_INIT[k]()
+		end
+	end
+
+	-- Call all ON_DRIVER_INIT functions
+	for k,v in pairs(ON_DRIVER_INIT) do
+		if (ON_DRIVER_INIT[k] ~= nil and type(ON_DRIVER_INIT[k]) == "function") then
+			C4:ErrorLog("INIT_CODE: ON_DRIVER_INIT." .. k .. "()")
+			ON_DRIVER_INIT[k]()
+		end
+	end
+
+	-- Fire OnPropertyChanged to set the initial Headers and other Property global sets, they'll change if Property is changed.
+	for k,v in pairs(Properties) do
+		OnPropertyChanged(k)
+	end
+end
+
+--[[
+	OnDriverUpdate
+		Invoked by director when an update to a driver is requested. This request can occur either by adding a new version of a driver
+		through the driver search list or right clicking on the driver and selecting "Update Driver" from within ComposerPro.
+		Its purpose is to initialize all components of the driver that are reset during a driver update.
+--]]
+function OnDriverUpdate()
+	C4:ErrorLog("INIT_CODE: OnDriverUpdate()")
+	
+	-- Call all ON_DRIVER_UPDATE functions
+	for k,v in pairs(ON_DRIVER_UPDATE) do
+		if (ON_DRIVER_UPDATE[k] ~= nil and type(ON_DRIVER_UPDATE[k]) == "function") then
+			C4:ErrorLog("INIT_CODE: ON_DRIVER_UPDATE." .. k .. "()")
+			ON_DRIVER_UPDATE[k]()
+		end
+	end
+end
+
+--[[
+	OnDriverLateInit
+		Invoked by director after all drivers in the project have been loaded. This API is provided
+		for the driver developer to contain all of the driver objects that will require initialization
+		after all drivers in the project have been loaded.
+--]]
+function OnDriverLateInit()
+	C4:ErrorLog("INIT_CODE: OnDriverLateInit()")
+	
+	-- Call all ON_DRIVER_LATEINIT functions
+	for k,v in pairs(ON_DRIVER_LATEINIT) do
+		if (ON_DRIVER_LATEINIT[k] ~= nil and type(ON_DRIVER_LATEINIT[k]) == "function") then
+			C4:ErrorLog("INIT_CODE: ON_DRIVER_LATEINIT." .. k .. "()")
+			ON_DRIVER_LATEINIT[k]()
+		end
+	end
+end
+
+
+--[[
+	OnDriverDestroyed
+		Function called by Director when a driver is removed. Release things this driver has allocated such as timers.
+--]]
+function OnDriverDestroyed()
+	C4:ErrorLog("INIT_CODE: OnDriverDestroyed()")
+	-- Call all ON_DRIVER_DESTROYED functions
+	for k,v in pairs(ON_DRIVER_DESTROYED) do
+		if (ON_DRIVER_DESTROYED[k] ~= nil and type(ON_DRIVER_DESTROYED[k]) == "function") then
+			C4:ErrorLog("INIT_CODE: ON_DRIVER_DESTROYED." .. k .. "()")
+			ON_DRIVER_DESTROYED[k]()
+		end
+	end
+end
+
+--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+-- Debug Logging Code
+--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+Log = {}
+
+-- Create a Table with Logging functions
+function Log:Create()
+	
+	-- table for logging functions
+	local lt = {}
+	
+	lt._logLevel = 0
+	lt._outputPrint = false
+	lt._outputC4Log = false
+	lt._logName =  "Set Log Name to display"
+	
+	function lt:SetLogLevel(level)
+		self._logLevel = level
+	end
+	
+	function lt:OutputPrint(value)
+		self._outputPrint = value
+	end
+	
+	function lt:OutputC4Log(value)
+		self._outputC4Log = value
+	end
+	
+	function lt:SetLogName(name)
+		self._logName = name
+	end
+
+	function lt:Enabled()
+		return (self._outputPrint or self._outputC4Log)
+	end
+	
+	function lt:PrintTable(tValue, sIndent)
+		if (type(tValue) == "table") then
+			if (self._outputPrint) then
+				for k,v in pairs(tValue) do
+					print(sIndent .. tostring(k) .. ":  " .. tostring(v))
+					if (type(v) == "table") then
+						self:PrintTable(v, sIndent .. "   ")
+					end
+				end
+			end
+	
+			if (self._outputC4Log) then
+				for k,v in pairs(tValue) do
+					C4:ErrorLog(self._logName .. ": " .. sIndent .. tostring(k) .. ":  " .. tostring(v))
+					if (type(v) == "table") then
+						self:PrintTable(v, sIndent .. "   ")
+					end
+				end
+			end
+
+		else
+			if (self._outputPrint) then
+				print (sIndent .. tValue)
+			end
+			
+			if (self._outputC4Log) then
+				C4:ErrorLog(self._logName .. ": " .. sIndent .. tValue)
+			end
+		end
+	end
+		
+	function lt:Print(logLevel, sLogText)
+		if (self._logLevel >= logLevel) then
+			if (type(sLogText) == "table") then
+				self:PrintTable(sLogText, "   ")
+				return
+			end
+			
+			if (self._outputPrint) then
+				print (sLogText)
+			end
+
+			if (self._outputC4Log) then
+				C4:ErrorLog(self._logName .. ": " .. sLogText)
+			end
+		end
+	end
+	
+	function lt:Alert(strDebugText)
+		self:Print(0, strDebugText)
+	end
+	
+	function lt:Error(strDebugText)
+		self:Print(1, strDebugText)
+	end
+	
+	function lt:Warn(strDebugText)
+		self:Print(2, strDebugText)
+	end
+	
+	function lt:Info(strDebugText)
+		self:Print(3, strDebugText)
+	end
+	
+	function lt:Trace(strDebugText)
+		self:Print(4, strDebugText)
+	end
+	
+	function lt:Debug(strDebugText)
+		self:Print(5, strDebugText)
+	end
+	
+	return lt
+end
+
+function ON_DRIVER_EARLY_INIT.LogLib()
+	-- Create and initialize debug logging
+	Dbg = Log.Create()
+	Dbg:SetLogName("base_template PLEASE CHANGE")
+end
+
+function ON_DRIVER_INIT.LogLib()
+	-- Create Debug Timer
+	gDebugTimer = Timer:Create("Debug", 45, "MINUTES", OnDebugTimerExpired)
+end
+
+--[[
+	OnDebugTimerExpired
+		Debug timer callback function
+--]]
+function OnDebugTimerExpired()
+	Dbg:Warn("Turning Debug Mode Off (timer expired)")
+	gDebugTimer:KillTimer()
+	C4:UpdateProperty("Debug Mode", "Off")
+	OnPropertyChanged("Debug Mode")
+end
+			  
+---------------------------------------------------------------------
+-- Timer Code
+---------------------------------------------------------------------
+Timer = {}
+
+-- Create a Table with Timer functions
+function Timer:Create(name, interval, units, Callback, repeating, Info)
+	-- timers table
+	local tt = {}
+	
+	tt._name = name
+	tt._timerID = TimerLibGetNextTimerID()
+	tt._interval = interval
+	tt._units = units
+	tt._repeating = repeating or false
+	tt._Callback = Callback
+	tt._info = Info or ""
+	tt._id = 0
+
+	function tt:StartTimer(...)
+		self:KillTimer()
+		
+		-- optional parameters (interval, units, repeating)
+		if ... then
+			local interval = select(1, ...)
+			local units = select(2, ...)
+			local repeating = select(3, ...)
+			
+			self._interval = interval or self._interval
+			self._units = units or self._units
+			self._repeating = repeating or self._repeating
+		end
+		
+		if (self._interval > 0) then
+			Dbg:Trace("Starting Timer: " .. self._name)
+			self._id = C4:AddTimer(self._interval, self._units, self._repeating)
+		end
+	end
+
+	function tt:KillTimer()
+		if (self._id) then
+			self._id = C4:KillTimer(self._id)
+		end
+	end
+	
+	function tt:TimerStarted()
+		return (self._id ~= 0)
+	end
+			
+	function tt:TimerStopped()
+		return not self:TimerStarted()
+	end
+	
+	gTimerLibTimers[tt._timerID] = tt
+	Dbg:Trace("Created timer " .. tt._name)
+	
+	return tt
+end
+
+function TimerLibGetNextTimerID()
+	gTimerLibTimerCurID = gTimerLibTimerCurID + 1
+	return gTimerLibTimerCurID
+end
+
+function ON_DRIVER_EARLY_INIT.TimerLib()
+	gTimerLibTimers = {}
+	gTimerLibTimerCurID = 0
+end
+
+function ON_DRIVER_DESTROYED.TimerLib()
+	-- Kill open timers
+	for k,v in pairs(gTimerLibTimers) do
+		v:KillTimer()
+	end
+end
+
+--[[
+	OnTimerExpired
+		Function called by Director when the specified Control4 timer expires.
+	Parameters
+		idTimer
+			Timer ID of expired timer.
+--]]
+function OnTimerExpired(idTimer)
+	for k,v in pairs(gTimerLibTimers) do
+		if (idTimer == v._id) then
+			if (v._Callback) then
+				v._Callback(v._info)
+			end
+		end
+	end
+end
+			
+--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+-- Queue Code
+--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+Queue = {}
+
+-- Create a Table with Queue functions
+function Queue:Create()
+
+	-- queue table
+	local t = setmetatable(Queue, {
+		__tostring = function(t)
+			return t:_tostring()
+		end
+	})
+
+	function t:_tostring()
+		local tOutputString = {}
+		
+		table.insert(tOutputString, "--- Queue ---")
+		table.insert(tOutputString, "  first = " .. tostring(self._et.first))
+		table.insert(tOutputString, "  last = " .. tostring(self._et.last))
+		table.insert(tOutputString, "  number in queue = " .. tostring(self._et.last - self._et.first + 1))
+		table.insert(tOutputString, "  maximum size = " .. self._maxSize)
+		table.insert(tOutputString, "  next value = " .. self:value())
+		return table.concat(tOutputString, "\n")
+	end
+
+	-- entry table
+	t._et = {first = 0, last = -1}
+	t._maxSize = 0	-- no size limit
+
+	-- push a value on the queue
+	function t:push (value)
+		local numItems = self._et.last - self._et.first + 1
+
+		if ( (self._maxSize <= 0) or (numItems < self._maxSize) ) then
+			local last = self._et.last + 1
+			self._et.last = last
+			self._et[last] = value
+			--Dbg:Trace ("Queue:push(), first = " .. tostring(self._et.first) .. ", last = " .. tostring(self._et.last) .. ", number in queue = " .. tostring(self._et.last - self._et.first + 1) .. ", value = " .. value)
+		else
+			-- if addToQueue == true then push value to queue
+			if (self.OnMaxSizeReached()) then
+				local last = self._et.last + 1
+				self._et.last = last
+				self._et[last] = value
+				--Dbg:Trace ("Queue:push(), first = " .. tostring(self._et.first) .. ", last = " .. tostring(self._et.last) .. ", number in queue = " .. tostring(self._et.last - self._et.first + 1) .. ", value = " .. value)
+			end
+		end
+	end
+
+	function t:OnMaxSizeReached()
+		--Dbg:Trace ("Max Size Reached - clear queue and push value to the queue (default).")
+		local addToQueue = true
+
+		t:clear()
+		return (addToQueue)
+	end
+
+	-- pop a value from the queue
+	function t:pop ()
+		local first = self._et.first
+		if first > self._et.last then
+			--Dbg:Trace("Queue:pop(), queue is empty")
+			return ""
+		end
+		local value = self._et[first]
+		self._et[first] = nil        -- to allow garbage collection
+		self._et.first = first + 1
+		--Dbg:Trace ("Queue:pop(), first = " .. tostring(self._et.first) .. ", last = " .. tostring(self._et.last) .. ", number in queue = " .. tostring(self._et.last - self._et.first + 1) .. ", value = " .. value)
+		return value
+	end
+
+	-- clear queue
+	function t:clear ()
+		local first = self._et.first
+		if first > self._et.last then
+			--Dbg:Trace ("Queue:clear(), queue is empty")
+			return ""
+		end
+		
+		self._et = {first = 0, last = -1}
+		--Dbg:Trace ("Queue:clear(), first = " .. tostring(self._et.first) .. ", last = " .. tostring(self._et.last) .. ", number in queue = " .. tostring(self._et.last - self._et.first + 1))
+		--Dbg:Trace (self._et)
+	end
+
+	-- return value of first item
+	function t:value ()
+		local first = self._et.first
+		if (first > self._et.last) then
+			return ""
+		else
+			return self._et[first]
+		end
+	end
+
+	-- return queue's maximum size
+	function t:MaxSize ()
+		return self._maxSize
+	end
+
+	-- return queue's maximum size
+	function t:SetMaxSize (size)
+		self._maxSize = size
+	end
+
+	-- is queue empty?
+	function t:empty ()
+		-- print ("self._et.first = " .. tostring(self._et.first) .. ", self._et.last = " .. tostring(self._et.last))
+		if (self._et.first > self._et.last) then
+			return true
+		else
+			return false
+		end
+	end
+	
+	return t
+end
+		]]></script>
+        <properties>
+            <property>
+                <name>Version</name>
+                <type>STRING</type>
+                <readonly>true</readonly>
+                <default>0.0.0</default>
+            </property>
+            <property>
+                <name>Camera ID</name>
+                <type>RANGED_INTEGER</type>
+                <readonly>false</readonly>
+                <default>1</default>
+                <minimum>1</minimum>
+                <maximum>4</maximum>
+            </property>
+            <property>
+                <name>Debug Level</name>
+                <type>LIST</type>
+                <readonly>false</readonly>
+                <default>2 - Warning</default>
+                <items>
+                    <item>0 - Alert</item>
+                    <item>1 - Error</item>
+                    <item>2 - Warning</item>
+                    <item>3 - Info</item>
+                    <item>4 - Debug</item>
+                    <item>5 - Trace</item>
+                </items>
+            </property>
+            <property>
+                <name>Debug Mode</name>
+                <type>LIST</type>
+                <readonly>false</readonly>
+                <default>Off</default>
+                <items>
+                    <item>Off</item>
+                    <item>Print</item>
+                    <item>Log</item>
+                    <item>Print and Log</item>
+                </items>
+            </property>
+        </properties>
+    </config>
+    <composer_categories>
+        <category>Camera</category>
+    </composer_categories>
+</devicedata>
