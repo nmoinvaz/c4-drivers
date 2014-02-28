@@ -74,8 +74,6 @@
         </connection>
     </connections>
     <config>
-        <identify_text>proxy_camera411</identify_text>
-        <identify_text>proxy_camera411</identify_text>
         <power_management_method>AlwaysOn</power_management_method>
         <power_command_delay>0</power_command_delay>
         <power_delay>0</power_delay>
