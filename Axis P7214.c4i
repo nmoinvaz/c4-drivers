@@ -6,7 +6,7 @@
     <model>P7214</model>
     <created>07/18/2013 12:00 AM</created>
     <modified>10/10/2013 12:00 AM</modified>
-    <version>1</version>
+    <version>6</version>
     <small>devices_sm\camera_sm.gif</small>
     <large>devices_lg\camera_lg.gif</large>
     <control>lua_gen</control>
@@ -74,6 +74,8 @@
         </connection>
     </connections>
     <config>
+        <identify_text>proxy_camera411</identify_text>
+        <identify_text>proxy_camera411</identify_text>
         <power_management_method>AlwaysOn</power_management_method>
         <power_command_delay>0</power_command_delay>
         <power_delay>0</power_delay>
@@ -212,7 +214,7 @@ function UI_REQ.GET_SNAPSHOT_QUERY_STRING(tParams)
     local size_y = tonumber(tParams["SIZE_Y"]) or 480
     Dbg:Trace("UI_REQ.GET_SNAPSHOT_QUERY_STRING (SIZE_X: " .. size_x .. " SIZE_Y: " .. size_y .. ")")
 	
-	snapshot_query_string = "axis-cgi/jpg/image.cgi?resolution=" .. get_image_size(size_x, size_y) .. "&camera=" .. cameraID
+	snapshot_query_string = "axis-cgi/jpg/image.cgi?camera=" .. cameraID .. "&resolution=" .. get_image_size(size_x, size_y)
 	
 	return "<snapshot_query_string>" .. C4:XmlEscapeString(snapshot_query_string) .. "</snapshot_query_string>"
 end
@@ -227,7 +229,7 @@ function UI_REQ.GET_MJPEG_QUERY_STRING(tParams)
 	local delay = tonumber(tParams["DELAY"]) or 200
     Dbg:Trace("UI_REQ.GET_MJPEG_QUERY_STRING (SIZE_X: " .. size_x .. " SIZE_Y: " .. size_y .. " DELAY: " .. delay .. ")")
 	
-	mjpeg_query_string = "axis-cgi/mjpg/video.cgi?resolution=" .. get_image_size(size_x, size_y) .. "&camera=" .. cameraID
+	mjpeg_query_string = "axis-cgi/mjpg/video.cgi?camera=" .. cameraID .. "&resolution=" .. get_image_size(size_x, size_y)
 	
 	return "<mjpeg_query_string>" .. C4:XmlEscapeString(mjpeg_query_string) .. "</mjpeg_query_string>"
 end
@@ -242,7 +244,7 @@ function UI_REQ.GET_RTSP_H264_QUERY_STRING(tParams)
 	local delay = tonumber(tParams["DELAY"]) or 50
     Dbg:Trace("UI_REQ.GET_RTSP_H264_QUERY_STRING (SIZE_X: " .. size_x .. " SIZE_Y: " .. size_y .. " DELAY: " .. delay .. ")")
 	
-	rtsp_query_string = "axis-media/media.amp?resolution=" .. get_image_size(size_x, size_y) .. "&camera=" .. cameraID
+	rtsp_query_string = "axis-media/media.amp?camera=" .. cameraID .. "&resolution=" .. get_image_size(size_x, size_y)
 	
 	return "<rtsp_h264_query_string>" .. C4:XmlEscapeString(rtsp_query_string) .. "</rtsp_h264_query_string>"
 end
